@@ -5,7 +5,6 @@ from typing import List
 
 
 def table_to_data(table: pa.Table) -> List[List[str]]:
-    """Convert Arrow table to tabular data list."""
     data = [["Prefix", "Size"]]
     for i in range(table.num_rows):
         prefix = table["prefix"][i].as_py()
@@ -25,7 +24,7 @@ def print_table(table: pa.Table) -> None:
 
 
 def table_to_markdown(table: pa.Table) -> str:
-    """Convert table to markdown-format table."""
+    """Convert table to markdown-format table"""
     data = table_to_data(table)
     return tabulate(data, headers="firstrow", tablefmt="github")
 
@@ -33,7 +32,6 @@ def table_to_markdown(table: pa.Table) -> str:
 def send_to_slack(
     webhook_url: str, table: pa.Table, title: str = "GCS Bucket Analysis"
 ) -> bool:
-    """Send formatted Arrow table to Slack via webhook."""
     table_string = tabulate(table_to_data(table), headers="firstrow", tablefmt="simple")
 
     message = {
