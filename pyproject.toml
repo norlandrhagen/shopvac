@@ -8,6 +8,7 @@ dependencies = [
     "arro3-core>=0.6.3",
     "click>=8.2.1",
     "humanize>=4.13.0",
+    "ipython>=9.5.0",
     "obstore>=0.8.2",
     "pyarrow>=21.0.0",
     "requests>=2.32.5",
@@ -27,4 +28,4 @@ dev = [
 
 
 [project.scripts]
-cloud-dir-size = "shopvac.cli:cli"
+shopvac = "shopvac.cli:cli"

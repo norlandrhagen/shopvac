@@ -6,7 +6,7 @@
 
 ```python
 
-uv run cloud-dir-size \
+uv run shopvac \
   --bucket-url gs://<ADD-ME> \
   --min-size-gb 5 \
   --send-slack \
