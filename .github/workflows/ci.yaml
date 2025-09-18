@@ -1,13 +1,28 @@
 name: CI
 
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+
+
 jobs:
-  add-uv:
-    name: python
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v5
-
+      - name: checkout
+        uses: actions/checkout@v5
+    
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
