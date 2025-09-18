@@ -1,7 +1,7 @@
 [project]
-name = "cloud-dir-size"
+name = "shopvac"
 version = "0.1.0"
-description = "Add your description here"
+description = "Get the size of your cloud buckets"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -27,4 +27,4 @@ dev = [
 
 
 [project.scripts]
-cloud-dir-size = "cloud_dir_size.cli:cli"
+cloud-dir-size = "shopvac.cli:cli"

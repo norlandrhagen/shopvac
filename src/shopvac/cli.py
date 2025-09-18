@@ -1,12 +1,12 @@
-# src/cloud_dir_size/cli.py
+# src/shopvac/cli.py
 
 import click
 import asyncio
 from typing import Optional
 
 
-from cloud_dir_size.size import get_top_level_sizes
-from cloud_dir_size.format import print_table, table_to_markdown, send_to_slack
+from shopvac.size import get_top_level_sizes
+from shopvac.format import print_table, table_to_markdown, send_to_slack
 
 
 @click.command()
