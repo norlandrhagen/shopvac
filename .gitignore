@@ -10,6 +10,6 @@ wheels/
 .venv
 
 
-uv.lock
+*uv.lock
 
 *.ruff_cache

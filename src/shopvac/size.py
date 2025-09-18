@@ -12,18 +12,22 @@ async def get_prefix_size(store: obs.store, prefix: str) -> int:
     """Calculate total size for a prefix in bytes."""
     print(f"Getting size of: {prefix}")
 
-    stream = obs.list(store, prefix=prefix, return_arrow=True)
-    total_size = 0
+    try:
+        stream = obs.list(store, prefix=prefix, return_arrow=True)
+        total_size = 0
 
-    async for batch in stream:
-        pyarrow_batch = pa.record_batch(batch)
-        if len(pyarrow_batch) > 0:
-            sizes_column = pyarrow_batch["size"]
-            batch_total = pc.sum(sizes_column).as_py()
-            total_size += batch_total
+        async for batch in stream:
+            pyarrow_batch = pa.record_batch(batch)
+            if len(pyarrow_batch) > 0:
+                sizes_column = pyarrow_batch["size"]
+                batch_total = pc.sum(sizes_column).as_py()
+                total_size += batch_total
 
-    print(f"Done: {prefix}: {naturalsize(total_size)}")
-    return total_size
+        print(f"Done: {prefix}: {naturalsize(total_size)}")
+        return total_size
+    except obs.exceptions.InvalidPathError:
+        # skips invalid paths and assigns to 0 bytes
+        return 0
 
 
 async def get_top_level_sizes(bucket_url: str, min_size_gb: float = 1.0) -> pa.Table:
