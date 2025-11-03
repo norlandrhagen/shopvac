@@ -1,13 +1,12 @@
-# src/shopvac/cli.py
-
 import click
 import asyncio
-from typing import Optional
+from typing import Optional, List, Tuple, Dict
 
 from shopvac.size import get_top_level_sizes
 from shopvac.format import send_to_slack, display_results
 
 from shopvac.store_factory import store_factory
+import pyarrow as pa
 
 
 # Define CLI options organized by provider
@@ -61,7 +60,7 @@ def add_options(options):
     """Decorator to add multiple click options to a command."""
 
     def decorator(func):
-        for option in reversed(options):  # Reversed to maintain order
+        for option in reversed(options):
             func = option(func)
         return func
 
@@ -71,8 +70,11 @@ def add_options(options):
 @click.command()
 @click.option(
     "--bucket-url",
+    "-b",
+    "bucket_urls",
+    multiple=True,
     required=True,
-    help=f"Cloud bucket URL to analyze. Supported schemes: {', '.join(store_factory.get_supported_schemes())}",
+    help=f"Cloud bucket URL(s) to analyze. Can be specified multiple times. Supported schemes: {', '.join(store_factory.get_supported_schemes())}",
 )
 @click.option(
     "--min-size-gb",
@@ -94,13 +96,35 @@ def add_options(options):
     is_flag=True,
     help="Display results as a rich table instead of markdown",
 )
+@click.option(
+    "--timeout-per-prefix",
+    default=3600,
+    show_default=True,
+    type=int,
+    help="Maximum seconds to spend on each prefix before timeout",
+)
+@click.option(
+    "--fail-fast",
+    is_flag=True,
+    help="Stop on first error instead of continuing with other prefixes",
+)
+@click.option(
+    "--max-concurrent-buckets",
+    default=10,
+    show_default=True,
+    type=int,
+    help="Maximum number of buckets to analyze concurrently",
+)
 @add_options(PROVIDER_OPTIONS)
 def cli(
-    bucket_url: str,
+    bucket_urls: Tuple[str, ...],
     min_size_gb: float,
     send_slack: bool,
     slack_webhook_url: Optional[str],
     rich_table: bool,
+    timeout_per_prefix: int,
+    fail_fast: bool,
+    max_concurrent_buckets: int,
     # AWS options
     aws_region: Optional[str],
     aws_access_key_id: Optional[str],
@@ -112,7 +136,7 @@ def cli(
     gcp_service_account_path: Optional[str],
     gcp_project_id: Optional[str],
 ):
-    """Analyze cloud bucket sizes."""
+    """Analyze cloud bucket sizes. Can analyze multiple buckets concurrently."""
     # Collect all provider-specific options
     provider_options = {
         "aws_region": aws_region,
@@ -130,47 +154,197 @@ def cli(
 
     asyncio.run(
         main(
-            bucket_url=bucket_url,
+            bucket_urls=list(bucket_urls),
             min_size_gb=min_size_gb,
             send_slack=send_slack,
             slack_webhook_url=slack_webhook_url,
             rich_table=rich_table,
+            timeout_per_prefix=timeout_per_prefix,
+            continue_on_error=not fail_fast,
+            max_concurrent_buckets=max_concurrent_buckets,
             **provider_options,
         )
     )
 
 
-async def main(
+async def analyze_single_bucket(
     bucket_url: str,
+    min_size_gb: float,
+    timeout_per_prefix: int,
+    continue_on_error: bool,
+    **provider_options,
+) -> Tuple[str, Optional[pa.Table], Optional[Exception]]:
+    """
+    Analyze a single bucket and return results.
+
+    Returns:
+        Tuple of (bucket_url, table or None, exception or None)
+    """
+    try:
+        print(f"\n{'=' * 70}")
+        print(f"Starting analysis: {bucket_url}")
+        print(f"{'=' * 70}")
+
+        table = await get_top_level_sizes(
+            bucket_url,
+            min_size_gb,
+            timeout_per_prefix=timeout_per_prefix,
+            continue_on_error=continue_on_error,
+            **provider_options,
+        )
+
+        print(f"\n Completed: {bucket_url} ({table.num_rows} prefixes)\n")
+        return bucket_url, table, None
+
+    except Exception as e:
+        print(f"\n Failed: {bucket_url}")
+        print(f"   Error: {type(e).__name__}: {e}\n")
+        return bucket_url, None, e
+
+
+async def analyze_multiple_buckets(
+    bucket_urls: List[str],
+    min_size_gb: float,
+    timeout_per_prefix: int,
+    continue_on_error: bool,
+    max_concurrent_buckets: int,
+    **provider_options,
+) -> Dict[str, pa.Table]:
+    """
+    Analyze multiple buckets concurrently with a semaphore to limit concurrency.
+
+    Returns:
+        Dictionary mapping bucket_url to pa.Table for successful analyses
+    """
+    semaphore = asyncio.Semaphore(max_concurrent_buckets)
+
+    async def bounded_analyze(bucket_url: str):
+        async with semaphore:
+            return await analyze_single_bucket(
+                bucket_url,
+                min_size_gb,
+                timeout_per_prefix,
+                continue_on_error,
+                **provider_options,
+            )
+
+    # Run all bucket analyses concurrently (but limited by semaphore)
+    results = await asyncio.gather(
+        *[bounded_analyze(url) for url in bucket_urls], return_exceptions=True
+    )
+
+    # Collect successful results
+    bucket_tables = {}
+    errors = []
+
+    for result in results:
+        if isinstance(result, Exception):
+            errors.append(("Unknown bucket", result))
+        else:
+            bucket_url, table, error = result
+            if table is not None:
+                bucket_tables[bucket_url] = table
+            if error is not None:
+                errors.append((bucket_url, error))
+
+    # Print summary
+    print(f"\n{'=' * 70}")
+    print("ANALYSIS COMPLETE")
+    print(f"{'=' * 70}")
+    print(f"✅ Successful: {len(bucket_tables)}/{len(bucket_urls)} buckets")
+    if errors:
+        print(f" Failed: {len(errors)} buckets")
+        for bucket_url, error in errors:
+            print(f"   - {bucket_url}: {type(error).__name__}")
+    print(f"{'=' * 70}\n")
+
+    return bucket_tables
+
+
+async def main(
+    bucket_urls: List[str],
     min_size_gb: float = 10.0,
     send_slack: bool = False,
     slack_webhook_url: Optional[str] = None,
     rich_table: bool = False,
+    timeout_per_prefix: int = 3600,
+    continue_on_error: bool = True,
+    max_concurrent_buckets: int = 5,
     **provider_options,
 ) -> None:
     """
     Analyze cloud bucket sizes.
 
     Args:
-        bucket_url: url to bucket. ex: gs://my-bucket or s3://my-bucket
+        bucket_urls: List of bucket URLs to analyze
         min_size_gb: Min size in gb to filter out
         send_slack: Send results to Slack
         slack_webhook_url: Slack webhook url
         rich_table: Display results as rich table instead of markdown
+        timeout_per_prefix: Maximum seconds to spend on each prefix
+        continue_on_error: Continue processing on errors
+        max_concurrent_buckets: Maximum number of buckets to analyze concurrently
         **provider_options: Provider-specific options (AWS, GCP, etc.)
     """
-    table = await get_top_level_sizes(bucket_url, min_size_gb, **provider_options)
 
-    # Display results using format module
-    display_results(table, bucket_url, use_rich_table=rich_table)
-
-    if send_slack:
-        if not slack_webhook_url:
-            raise ValueError("Slack webhook url must be provided if send_slack is True")
-
-        # Always send markdown to Slack (handled in format module)
-        send_to_slack(
-            slack_webhook_url,
-            table,
-            f"Bucket: {bucket_url} (prefixes >= {min_size_gb} GB)",
+    # Handle single vs multiple buckets
+    if len(bucket_urls) == 1:
+        # Single bucket - use original flow
+        bucket_url = bucket_urls[0]
+        table = await get_top_level_sizes(
+            bucket_url,
+            min_size_gb,
+            timeout_per_prefix=timeout_per_prefix,
+            continue_on_error=continue_on_error,
+            **provider_options,
         )
+
+        # Display results
+        display_results(table, bucket_url, use_rich_table=rich_table)
+
+        # Send to Slack if requested
+        if send_slack:
+            if not slack_webhook_url:
+                raise ValueError(
+                    "Slack webhook url must be provided if send_slack is True"
+                )
+            send_to_slack(
+                slack_webhook_url,
+                table,
+                f"Bucket: {bucket_url} (prefixes >= {min_size_gb} GB)",
+            )
+
+    else:
+        # Multiple buckets - analyze concurrently
+        print(
+            f"Analyzing {len(bucket_urls)} buckets concurrently (max {max_concurrent_buckets} at a time)\n"
+        )
+
+        bucket_tables = await analyze_multiple_buckets(
+            bucket_urls,
+            min_size_gb,
+            timeout_per_prefix,
+            continue_on_error,
+            max_concurrent_buckets,
+            **provider_options,
+        )
+
+        # Display results for each bucket
+        for bucket_url, table in bucket_tables.items():
+            display_results(table, bucket_url, use_rich_table=rich_table)
+            print("\n")
+
+        # Send to Slack if requested (combined report)
+        if send_slack:
+            if not slack_webhook_url:
+                raise ValueError(
+                    "Slack webhook url must be provided if send_slack is True"
+                )
+
+            # Send each bucket as a separate message for clarity
+            for bucket_url, table in bucket_tables.items():
+                send_to_slack(
+                    slack_webhook_url,
+                    table,
+                    f"Bucket: {bucket_url} (prefixes >= {min_size_gb} GB)",
+                )
