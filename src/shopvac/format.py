@@ -30,12 +30,10 @@ def print_rich_table(table: pa.Table, title: str) -> None:
 
     console = Console()
 
-    # Create rich table
     rich_table = Table(title=title)
     rich_table.add_column("Prefix", style="cyan", no_wrap=True)
     rich_table.add_column("Size", style="magenta")
 
-    # Add rows to rich table
     for i in range(table.num_rows):
         prefix = table["prefix"][i].as_py().rstrip("/")
         size_formatted = table["size_formatted"][i].as_py()
@@ -50,13 +48,11 @@ def print_rich_table(table: pa.Table, title: str) -> None:
 def display_results(
     table: pa.Table, bucket_url: str, use_rich_table: bool = False
 ) -> None:
-    """Display results in either rich table or standard format."""
+    """rich table or standard"""
     if use_rich_table:
         print_rich_table(table, f"Bucket Analysis: {bucket_url}")
     else:
         print_table(table)
-        print("\nMarkdown Table:")
-        print(table_to_markdown(table))
 
 
 def table_to_markdown(table: pa.Table) -> str:
@@ -68,7 +64,7 @@ def table_to_markdown(table: pa.Table) -> str:
 def send_to_slack(
     webhook_url: str, table: pa.Table, title: str = "Cloud Bucket Analysis"
 ) -> bool:
-    """Send table results to Slack (always uses simple text format)."""
+    """Send table results to Slack"""
     table_string = tabulate(table_to_data(table), headers="firstrow", tablefmt="simple")
 
     message = {
@@ -84,5 +80,5 @@ def send_to_slack(
 
     response = requests.post(webhook_url, json=message)
     response.raise_for_status()
-    print("Successfully sent to Slack!")
+    print("sent table to slack")
     return True
