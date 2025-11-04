@@ -71,8 +71,8 @@ def add_options(options):
 @click.option(
     "--bucket-url",
     "-b",
-    "bucket_urls",  # This makes it store as a list
-    multiple=True,  # Allow multiple --bucket-url flags
+    "bucket_urls",
+    multiple=True,
     required=True,
     help=f"Cloud bucket URL(s) to analyze. Can be specified multiple times. Supported schemes: {', '.join(store_factory.get_supported_schemes())}",
 )
@@ -137,6 +137,12 @@ def cli(
     gcp_project_id: Optional[str],
 ):
     """Analyze cloud bucket sizes. Can analyze multiple buckets concurrently."""
+    # Filter out empty bucket URLs
+    bucket_urls = [url for url in bucket_urls if url and url.strip()]
+
+    if not bucket_urls:
+        raise click.BadParameter("At least one valid bucket URL must be provided")
+
     # Collect all provider-specific options
     provider_options = {
         "aws_region": aws_region,
@@ -251,9 +257,9 @@ async def analyze_multiple_buckets(
     print(f"\n{'=' * 70}")
     print("ANALYSIS COMPLETE")
     print(f"{'=' * 70}")
-    print(f"Successful: {len(bucket_tables)}/{len(bucket_urls)} buckets")
+    print(f" Successful: {len(bucket_tables)}/{len(bucket_urls)} buckets")
     if errors:
-        print(f"Failed: {len(errors)} buckets")
+        print(f" Failed: {len(errors)} buckets")
         for bucket_url, error in errors:
             print(f"   - {bucket_url}: {type(error).__name__}")
     print(f"{'=' * 70}\n")
