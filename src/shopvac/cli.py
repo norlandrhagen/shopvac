@@ -60,7 +60,7 @@ def add_options(options):
     """Decorator to add multiple click options to a command."""
 
     def decorator(func):
-        for option in reversed(options):  # Reversed to maintain order
+        for option in reversed(options):
             func = option(func)
         return func
 
@@ -70,8 +70,9 @@ def add_options(options):
 @click.command()
 @click.option(
     "--bucket-url",
-    "bucket_urls",  # This makes it store as a list
-    multiple=True,  # Allow multiple --bucket-url flags
+    "-b",
+    "bucket_urls",
+    multiple=True,
     required=True,
     help=f"Cloud bucket URL(s) to analyze. Can be specified multiple times. Supported schemes: {', '.join(store_factory.get_supported_schemes())}",
 )
