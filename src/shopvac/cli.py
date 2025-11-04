@@ -5,7 +5,6 @@ from typing import Optional, List, Tuple, Dict
 from shopvac.size import get_top_level_sizes
 from shopvac.format import send_to_slack, display_results
 
-from shopvac.store_factory import store_factory
 import pyarrow as pa
 
 
@@ -74,7 +73,7 @@ def add_options(options):
     "bucket_urls",
     multiple=True,
     required=True,
-    help=f"Cloud bucket URL(s) to analyze. Can be specified multiple times. Supported schemes: {', '.join(store_factory.get_supported_schemes())}",
+    help="Cloud bucket URL(s) to analyze. Can be specified multiple times.",
 )
 @click.option(
     "--min-size-gb",
@@ -196,6 +195,8 @@ async def analyze_single_bucket(
             min_size_gb,
             timeout_per_prefix=timeout_per_prefix,
             continue_on_error=continue_on_error,
+            show_progress=True,
+            suppress_output=False,
             **provider_options,
         )
 
@@ -253,16 +254,10 @@ async def analyze_multiple_buckets(
             if error is not None:
                 errors.append((bucket_url, error))
 
-    # Print summary
-    print(f"\n{'=' * 70}")
-    print("ANALYSIS COMPLETE")
-    print(f"{'=' * 70}")
-    print(f" Successful: {len(bucket_tables)}/{len(bucket_urls)} buckets")
     if errors:
         print(f" Failed: {len(errors)} buckets")
         for bucket_url, error in errors:
             print(f"   - {bucket_url}: {type(error).__name__}")
-    print(f"{'=' * 70}\n")
 
     return bucket_tables
 
@@ -345,8 +340,8 @@ async def main(
         # Count errors (buckets not in results)
         failed_buckets = set(bucket_urls) - set(bucket_tables.keys())
 
-        # Print summary
-        print(f"\n{'=' * 70}")
+        # Print summary (only once, not in analyze_multiple_buckets)
+        print(f"{'=' * 70}")
         print("ANALYSIS COMPLETE")
         print(f"{'=' * 70}")
         print(f"Successful: {len(bucket_tables)}/{len(bucket_urls)} buckets")
