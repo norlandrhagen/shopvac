@@ -60,7 +60,7 @@ def add_options(options):
     """Decorator to add multiple click options to a command."""
 
     def decorator(func):
-        for option in reversed(options):
+        for option in reversed(options):  # Reversed to maintain order
             func = option(func)
         return func
 
@@ -71,8 +71,8 @@ def add_options(options):
 @click.option(
     "--bucket-url",
     "-b",
-    "bucket_urls",
-    multiple=True,
+    "bucket_urls",  # This makes it store as a list
+    multiple=True,  # Allow multiple --bucket-url flags
     required=True,
     help=f"Cloud bucket URL(s) to analyze. Can be specified multiple times. Supported schemes: {', '.join(store_factory.get_supported_schemes())}",
 )
@@ -182,7 +182,7 @@ async def analyze_single_bucket(
     """
     try:
         print(f"\n{'=' * 70}")
-        print(f" getting size of: {bucket_url}")
+        print(f"Starting analysis: {bucket_url}")
         print(f"{'=' * 70}")
 
         table = await get_top_level_sizes(
@@ -193,12 +193,12 @@ async def analyze_single_bucket(
             **provider_options,
         )
 
-        print(f"\n finished: {bucket_url} ({table.num_rows} prefixes)\n")
+        print(f"\n Completed: {bucket_url} ({table.num_rows} prefixes)\n")
         return bucket_url, table, None
 
     except Exception as e:
-        print(f"\n failed: {bucket_url}")
-        print(f"   error: {type(e).__name__}: {e}\n")
+        print(f"\n Failed: {bucket_url}")
+        print(f"   Error: {type(e).__name__}: {e}\n")
         return bucket_url, None, e
 
 
@@ -249,11 +249,11 @@ async def analyze_multiple_buckets(
 
     # Print summary
     print(f"\n{'=' * 70}")
-    print("COMPLETE")
+    print("ANALYSIS COMPLETE")
     print(f"{'=' * 70}")
-    print(f"finished: {len(bucket_tables)}/{len(bucket_urls)} buckets")
+    print(f"Successful: {len(bucket_tables)}/{len(bucket_urls)} buckets")
     if errors:
-        print(f"failed: {len(errors)} buckets")
+        print(f"Failed: {len(errors)} buckets")
         for bucket_url, error in errors:
             print(f"   - {bucket_url}: {type(error).__name__}")
     print(f"{'=' * 70}\n")
@@ -325,7 +325,7 @@ async def main(
 
         start_time = time.time()
 
-        bucket_tables, errors = await analyze_multiple_buckets(
+        bucket_tables = await analyze_multiple_buckets(
             bucket_urls,
             min_size_gb,
             timeout_per_prefix,
@@ -336,16 +336,19 @@ async def main(
 
         elapsed = time.time() - start_time
 
+        # Count errors (buckets not in results)
+        failed_buckets = set(bucket_urls) - set(bucket_tables.keys())
+
         # Print summary
         print(f"\n{'=' * 70}")
         print("ANALYSIS COMPLETE")
         print(f"{'=' * 70}")
         print(f"Successful: {len(bucket_tables)}/{len(bucket_urls)} buckets")
         print(f"Time: {int(elapsed // 60)}m {int(elapsed % 60)}s")
-        if errors:
-            print(f"Failed: {len(errors)} buckets")
-            for bucket_url, error in errors:
-                print(f"   - {bucket_url}: {type(error).__name__}")
+        if failed_buckets:
+            print(f"Failed: {len(failed_buckets)} buckets")
+            for bucket_url in failed_buckets:
+                print(f"   - {bucket_url}")
         print(f"{'=' * 70}\n")
 
         # Display results for each bucket
