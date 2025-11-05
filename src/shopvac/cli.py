@@ -8,7 +8,6 @@ from shopvac.format import send_to_slack, display_results
 import pyarrow as pa
 
 
-# Define CLI options organized by provider
 AWS_OPTIONS = [
     click.option(
         "--aws-region",
@@ -51,15 +50,12 @@ GCP_OPTIONS = [
     click.option("--gcp-project-id", default=None, help="GCP project ID."),
 ]
 
-# Combine all provider options
 PROVIDER_OPTIONS = AWS_OPTIONS + GCP_OPTIONS
 
 
 def add_options(options):
-    """Decorator to add multiple click options to a command."""
-
     def decorator(func):
-        for option in reversed(options):  # Reversed to maintain order
+        for option in reversed(options):
             func = option(func)
         return func
 
@@ -124,25 +120,20 @@ def cli(
     timeout_per_prefix: int,
     fail_fast: bool,
     max_concurrent_buckets: int,
-    # AWS options
     aws_region: Optional[str],
     aws_access_key_id: Optional[str],
     aws_secret_access_key: Optional[str],
     aws_session_token: Optional[str],
     aws_profile: Optional[str],
     skip_signature: bool,
-    # GCP options
     gcp_service_account_path: Optional[str],
     gcp_project_id: Optional[str],
 ):
-    """Analyze cloud bucket sizes. Can analyze multiple buckets concurrently."""
-    # Filter out empty bucket URLs
     bucket_urls = [url for url in bucket_urls if url and url.strip()]
 
     if not bucket_urls:
         raise click.BadParameter("At least one valid bucket URL must be provided")
 
-    # Collect all provider-specific options
     provider_options = {
         "aws_region": aws_region,
         "aws_access_key_id": aws_access_key_id,
@@ -154,7 +145,6 @@ def cli(
         "gcp_project_id": gcp_project_id,
     }
 
-    # Filter out None values to keep the interface clean
     provider_options = {k: v for k, v in provider_options.items() if v is not None}
 
     asyncio.run(
@@ -171,40 +161,29 @@ def cli(
         )
     )
 
-
 async def analyze_single_bucket(
     bucket_url: str,
     min_size_gb: float,
     timeout_per_prefix: int,
     continue_on_error: bool,
+    show_progress: bool,
     **provider_options,
 ) -> Tuple[str, Optional[pa.Table], Optional[Exception]]:
-    """
-    Analyze a single bucket and return results.
-
-    Returns:
-        Tuple of (bucket_url, table or None, exception or None)
-    """
     try:
-        print(f"\n{'=' * 70}")
-        print(f"Starting analysis: {bucket_url}")
-        print(f"{'=' * 70}")
-
         table = await get_top_level_sizes(
             bucket_url,
             min_size_gb,
             timeout_per_prefix=timeout_per_prefix,
             continue_on_error=continue_on_error,
-            show_progress=True,
-            suppress_output=False,
+            show_progress=show_progress,
             **provider_options,
         )
 
-        print(f"\n Completed: {bucket_url} ({table.num_rows} prefixes)\n")
+        print(f"\nCompleted: {bucket_url} ({table.num_rows} prefixes)\n")
         return bucket_url, table, None
 
     except Exception as e:
-        print(f"\n Failed: {bucket_url}")
+        print(f"\nFailed: {bucket_url}")
         print(f"   Error: {type(e).__name__}: {e}\n")
         return bucket_url, None, e
 
@@ -217,12 +196,6 @@ async def analyze_multiple_buckets(
     max_concurrent_buckets: int,
     **provider_options,
 ) -> Dict[str, pa.Table]:
-    """
-    Analyze multiple buckets concurrently with a semaphore to limit concurrency.
-
-    Returns:
-        Dictionary mapping bucket_url to pa.Table for successful analyses
-    """
     semaphore = asyncio.Semaphore(max_concurrent_buckets)
 
     async def bounded_analyze(bucket_url: str):
@@ -232,15 +205,14 @@ async def analyze_multiple_buckets(
                 min_size_gb,
                 timeout_per_prefix,
                 continue_on_error,
+                show_progress=False,
                 **provider_options,
             )
 
-    # Run all bucket analyses concurrently (but limited by semaphore)
     results = await asyncio.gather(
         *[bounded_analyze(url) for url in bucket_urls], return_exceptions=True
     )
 
-    # Collect successful results
     bucket_tables = {}
     errors = []
 
@@ -255,7 +227,7 @@ async def analyze_multiple_buckets(
                 errors.append((bucket_url, error))
 
     if errors:
-        print(f" Failed: {len(errors)} buckets")
+        print(f"Failed: {len(errors)} buckets")
         for bucket_url, error in errors:
             print(f"   - {bucket_url}: {type(error).__name__}")
 
@@ -270,40 +242,22 @@ async def main(
     rich_table: bool = False,
     timeout_per_prefix: int = 3600,
     continue_on_error: bool = True,
-    max_concurrent_buckets: int = 5,
+    max_concurrent_buckets: int = 10,
     **provider_options,
 ) -> None:
-    """
-    Analyze cloud bucket sizes.
-
-    Args:
-        bucket_urls: List of bucket URLs to analyze
-        min_size_gb: Min size in gb to filter out
-        send_slack: Send results to Slack
-        slack_webhook_url: Slack webhook url
-        rich_table: Display results as rich table instead of markdown
-        timeout_per_prefix: Maximum seconds to spend on each prefix
-        continue_on_error: Continue processing on errors
-        max_concurrent_buckets: Maximum number of buckets to analyze concurrently
-        **provider_options: Provider-specific options (AWS, GCP, etc.)
-    """
-
-    # Handle single vs multiple buckets
     if len(bucket_urls) == 1:
-        # Single bucket - use original flow
         bucket_url = bucket_urls[0]
         table = await get_top_level_sizes(
             bucket_url,
             min_size_gb,
             timeout_per_prefix=timeout_per_prefix,
             continue_on_error=continue_on_error,
+            show_progress=True,
             **provider_options,
         )
 
-        # Display results
         display_results(table, bucket_url, use_rich_table=rich_table)
 
-        # Send to Slack if requested
         if send_slack:
             if not slack_webhook_url:
                 raise ValueError(
@@ -316,7 +270,6 @@ async def main(
             )
 
     else:
-        # Multiple buckets - analyze concurrently
         print(
             f"Analyzing {len(bucket_urls)} buckets concurrently (max {max_concurrent_buckets} at a time)..."
         )
@@ -337,10 +290,8 @@ async def main(
 
         elapsed = time.time() - start_time
 
-        # Count errors (buckets not in results)
         failed_buckets = set(bucket_urls) - set(bucket_tables.keys())
 
-        # Print summary (only once, not in analyze_multiple_buckets)
         print(f"{'=' * 70}")
         print("ANALYSIS COMPLETE")
         print(f"{'=' * 70}")
@@ -352,21 +303,18 @@ async def main(
                 print(f"   - {bucket_url}")
         print(f"{'=' * 70}\n")
 
-        # Display results for each bucket
         for bucket_url, table in bucket_tables.items():
             print(f"\n{'=' * 70}")
             print(f"Results for: {bucket_url}")
             print(f"{'=' * 70}")
             display_results(table, bucket_url, use_rich_table=rich_table)
 
-        # Send to Slack if requested (combined report)
         if send_slack:
             if not slack_webhook_url:
                 raise ValueError(
                     "Slack webhook url must be provided if send_slack is True"
                 )
 
-            # Send each bucket as a separate message for clarity
             for bucket_url, table in bucket_tables.items():
                 send_to_slack(
                     slack_webhook_url,
