@@ -24,7 +24,7 @@ def print_table(table: pa.Table) -> None:
 
 
 def print_rich_table(table: pa.Table, title: str) -> None:
-    """Print a beautiful rich table to stdout."""
+    """Print a rich table to stdout."""
     from rich.table import Table
     from rich.console import Console
 

@@ -16,12 +16,13 @@ async def get_prefix_size_with_progress(
     prefix: str,
     progress: Progress,
     task_id: TaskID,
-    timeout_seconds: int = 3600,  # time in seconds - ie 1 hr
+    timeout_seconds: int = 3600,  # 1 hour default timeout
 ) -> Tuple[str, int]:
     """Calculate total size for a prefix with progress updates and timeout."""
     try:
         progress.update(task_id, description=f"🔍 {prefix.rstrip('/')}")
 
+        # Wrap the entire operation in a timeout
         async def calculate_size():
             stream = obs.list(store, prefix=prefix, return_arrow=True)
             total_size = 0
@@ -33,6 +34,7 @@ async def get_prefix_size_with_progress(
                     batch_total = pc.sum(sizes_column).as_py()
                     total_size += batch_total
 
+                    # Update with current size
                     progress.update(
                         task_id,
                         description=f"🔍 {prefix.rstrip('/')}: {naturalsize(total_size)}",
@@ -42,8 +44,9 @@ async def get_prefix_size_with_progress(
 
         total_size = await asyncio.wait_for(calculate_size(), timeout=timeout_seconds)
 
+        # Mark as completed
         progress.update(
-            task_id, description=f"{prefix.rstrip('/')}: {naturalsize(total_size)}"
+            task_id, description=f"✅ {prefix.rstrip('/')}: {naturalsize(total_size)}"
         )
         return prefix, total_size
 
@@ -54,11 +57,11 @@ async def get_prefix_size_with_progress(
         )
         return prefix, 0
     except obs.exceptions.InvalidPathError:
-        progress.update(task_id, description=f"{prefix.rstrip('/')}: Invalid path")
+        progress.update(task_id, description=f"⚠️  {prefix.rstrip('/')}: Invalid path")
         return prefix, 0
     except Exception as e:
         progress.update(
-            task_id, description=f"{prefix.rstrip('/')}: Error ({type(e).__name__})"
+            task_id, description=f"❌ {prefix.rstrip('/')}: Error ({type(e).__name__})"
         )
         return prefix, 0
 
@@ -66,8 +69,8 @@ async def get_prefix_size_with_progress(
 async def get_top_level_sizes(
     bucket_url: str,
     min_size_gb: float = 1.0,
-    timeout_per_prefix: int = 3600,
-    continue_on_error: bool = True,
+    timeout_per_prefix: int = 3600,  # 1 hour per prefix
+    continue_on_error: bool = True,  # Continue even if some prefixes fail
     **provider_options,
 ) -> pa.Table:
     """
@@ -82,12 +85,13 @@ async def get_top_level_sizes(
     """
     console = Console()
 
+    # Use the factory to create the appropriate store with provider-specific options
     store = store_factory.create_store(bucket_url, **provider_options)
 
     result: dict[str, Any] = await obs.list_with_delimiter_async(store, prefix=None)
     top_level_prefixes: List[str] = result["common_prefixes"]
 
-    # Create display for progress
+    # Create progress display
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -95,6 +99,7 @@ async def get_top_level_sizes(
         console=console,
         expand=True,
     ) as progress:
+        # Create tasks for all prefixes with individual progress tracking
         tasks_and_ids = []
         for prefix in top_level_prefixes:
             task_id = progress.add_task(f"⏳ {prefix.rstrip('/')}", total=None)
@@ -103,21 +108,24 @@ async def get_top_level_sizes(
             )
             tasks_and_ids.append(task_coro)
 
+        # Run all tasks concurrently
         if continue_on_error:
+            # Use return_exceptions=True to continue on failure
             results = await asyncio.gather(*tasks_and_ids, return_exceptions=True)
 
+            # Filter out exceptions and log them
             valid_results = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    console.print(
-                        f"[red]Error processing {top_level_prefixes[i]}: {result}[/red]"
-                    )
+                    console.print(f"Error processing {top_level_prefixes[i]}: {result}")
                 else:
                     valid_results.append(result)
             results = valid_results
         else:
+            # Fail fast on first error
             results = await asyncio.gather(*tasks_and_ids)
 
+    # Filter results based on size
     filtered_data: List[Tuple[str, int]] = []
     for prefix, size in results:
         size_gb = size / (1024**3)
