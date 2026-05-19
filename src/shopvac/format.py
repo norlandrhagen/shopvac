@@ -55,12 +55,6 @@ def display_results(
         print_table(table)
 
 
-def table_to_markdown(table: pa.Table) -> str:
-    """Convert table to markdown-format table"""
-    data = table_to_data(table)
-    return tabulate(data, headers="firstrow", tablefmt="github")
-
-
 def send_to_slack(
     webhook_url: str, table: pa.Table, title: str = "Cloud Bucket Analysis"
 ) -> bool:

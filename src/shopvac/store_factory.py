@@ -70,6 +70,7 @@ class S3StoreProvider(CloudStoreProvider):
             "aws_access_key_id": "access_key_id",
             "aws_secret_access_key": "secret_access_key",
             "aws_session_token": "session_token",
+            "aws_endpoint": "endpoint",
             "skip_signature": "skip_signature",
         }
 
@@ -77,6 +78,14 @@ class S3StoreProvider(CloudStoreProvider):
         for cli_param, store_param in param_mapping.items():
             if cli_kwargs.get(cli_param) is not None:
                 store_kwargs[store_param] = cli_kwargs[cli_param]
+
+        # Allow HTTP when using a non-HTTPS custom endpoint (e.g. local moto server)
+        endpoint = store_kwargs.get("endpoint", "")
+        if endpoint.startswith("http://"):
+            store_kwargs["client_options"] = {
+                **store_kwargs.get("client_options", {}),
+                "allow_http": True,
+            }
 
         # Handle region inference if needed
         if "region" not in store_kwargs and not store_kwargs.get(

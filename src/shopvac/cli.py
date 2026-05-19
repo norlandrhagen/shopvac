@@ -161,6 +161,7 @@ def cli(
         )
     )
 
+
 async def analyze_single_bucket(
     bucket_url: str,
     min_size_gb: float,
