@@ -39,6 +39,18 @@ def s3_client(moto_server):
     )
 
 
+NESTED_BUCKET = "test-shopvac-nested"
+
+# Per-prefix totals for the nested layout below
+PROJ_A_SIZE = 2550  # model-1 (2000) + model-2 (500) + readme.txt (50)
+PROJ_A_MODEL_1_SIZE = 2000
+PROJ_A_MODEL_2_SIZE = 500
+PROJ_B_SIZE = 4300  # data-v1 (4000) + data-v2 (300)
+PROJ_B_DATA_V1_SIZE = 4000
+PROJ_B_DATA_V1_SUB_SIZE = 2000
+PROJ_B_DATA_V2_SIZE = 300
+
+
 @pytest.fixture
 def seeded_bucket(s3_client):
     """Bucket with known prefix/size layout."""
@@ -59,3 +71,27 @@ def seeded_bucket(s3_client):
     for key, _ in objects:
         s3_client.delete_object(Bucket=TEST_BUCKET, Key=key)
     s3_client.delete_bucket(Bucket=TEST_BUCKET)
+
+
+@pytest.fixture
+def seeded_bucket_nested(s3_client):
+    """Bucket with multi-level prefix layout for tree-mode tests."""
+    s3_client.create_bucket(Bucket=NESTED_BUCKET)
+
+    objects = [
+        ("proj-a/model-1/f1.bin", 1000),
+        ("proj-a/model-1/f2.bin", 1000),
+        ("proj-a/model-2/f1.bin", 500),
+        ("proj-a/readme.txt", 50),
+        ("proj-b/data-v1/c1.bin", 2000),
+        ("proj-b/data-v1/sub/c2.bin", 2000),
+        ("proj-b/data-v2/c1.bin", 300),
+    ]
+    for key, size in objects:
+        s3_client.put_object(Bucket=NESTED_BUCKET, Key=key, Body=b"\x00" * size)
+
+    yield f"s3://{NESTED_BUCKET}"
+
+    for key, _ in objects:
+        s3_client.delete_object(Bucket=NESTED_BUCKET, Key=key)
+    s3_client.delete_bucket(Bucket=NESTED_BUCKET)

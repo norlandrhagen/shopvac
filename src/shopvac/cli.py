@@ -86,6 +86,14 @@ def add_options(options):
     help="Min size in gb to filter out",
 )
 @click.option(
+    "--depth",
+    "-d",
+    default=1,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Prefix levels to descend; >1 renders a size tree",
+)
+@click.option(
     "--send-slack", is_flag=True, help="Send table of result to a slack webhook"
 )
 @click.option(
@@ -122,6 +130,7 @@ def cli(
     bucket_urls: Tuple[str, ...],
     bucket_file: Optional[str],
     min_size_gb: float,
+    depth: int,
     send_slack: bool,
     slack_webhook_url: Optional[str],
     rich_table: bool,
@@ -175,6 +184,7 @@ def cli(
         main(
             bucket_urls=list(bucket_urls),
             min_size_gb=min_size_gb,
+            depth=depth,
             send_slack=send_slack,
             slack_webhook_url=slack_webhook_url,
             rich_table=rich_table,
@@ -192,6 +202,7 @@ async def analyze_single_bucket(
     timeout_per_prefix: int,
     continue_on_error: bool,
     show_progress: bool,
+    depth: int = 1,
     **provider_options,
 ) -> Tuple[str, Optional[pa.Table], Optional[Exception]]:
     try:
@@ -201,6 +212,7 @@ async def analyze_single_bucket(
             timeout_per_prefix=timeout_per_prefix,
             continue_on_error=continue_on_error,
             show_progress=show_progress,
+            depth=depth,
             **provider_options,
         )
 
@@ -219,6 +231,7 @@ async def analyze_multiple_buckets(
     timeout_per_prefix: int,
     continue_on_error: bool,
     max_concurrent_buckets: int,
+    depth: int = 1,
     **provider_options,
 ) -> Dict[str, pa.Table]:
     semaphore = asyncio.Semaphore(max_concurrent_buckets)
@@ -231,6 +244,7 @@ async def analyze_multiple_buckets(
                 timeout_per_prefix,
                 continue_on_error,
                 show_progress=False,
+                depth=depth,
                 **provider_options,
             )
 
@@ -262,6 +276,7 @@ async def analyze_multiple_buckets(
 async def main(
     bucket_urls: List[str],
     min_size_gb: float = 10.0,
+    depth: int = 1,
     send_slack: bool = False,
     slack_webhook_url: Optional[str] = None,
     rich_table: bool = False,
@@ -278,6 +293,7 @@ async def main(
             timeout_per_prefix=timeout_per_prefix,
             continue_on_error=continue_on_error,
             show_progress=True,
+            depth=depth,
             **provider_options,
         )
 
@@ -310,6 +326,7 @@ async def main(
             timeout_per_prefix,
             continue_on_error,
             max_concurrent_buckets,
+            depth=depth,
             **provider_options,
         )
 

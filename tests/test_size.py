@@ -9,6 +9,12 @@ from tests.conftest import (
     PREFIX_C_SIZE,
     MIN_SIZE_INCLUDE_AB,
     MIN_SIZE_INCLUDE_ALL,
+    PROJ_A_SIZE,
+    PROJ_A_MODEL_1_SIZE,
+    PROJ_A_MODEL_2_SIZE,
+    PROJ_B_SIZE,
+    PROJ_B_DATA_V1_SIZE,
+    PROJ_B_DATA_V1_SUB_SIZE,
 )
 
 S3_KWARGS = dict(
@@ -74,9 +80,85 @@ async def test_get_prefix_size(seeded_bucket, moto_server):
         endpoint=MOTO_ENDPOINT,
         client_options={"allow_http": True},
     )
-    prefix, size = await get_prefix_size(store, "prefix-a/")
+    prefix, size, sizes = await get_prefix_size(store, "prefix-a/")
     assert prefix == "prefix-a/"
     assert size == PREFIX_A_SIZE
+    assert sizes == {"prefix-a": PREFIX_A_SIZE}
+
+
+async def test_get_prefix_size_with_depth(seeded_bucket_nested, moto_server):
+    from obstore.store import from_url
+
+    store = from_url(
+        seeded_bucket_nested,
+        access_key_id="testing",
+        secret_access_key="testing",
+        region=TEST_REGION,
+        endpoint=MOTO_ENDPOINT,
+        client_options={"allow_http": True},
+    )
+    prefix, total, sizes = await get_prefix_size(store, "proj-a/", max_depth=2)
+    assert total == PROJ_A_SIZE
+    assert sizes["proj-a"] == PROJ_A_SIZE
+    assert sizes["proj-a/model-1"] == PROJ_A_MODEL_1_SIZE
+    assert sizes["proj-a/model-2"] == PROJ_A_MODEL_2_SIZE
+    # objects directly at a level are not sub-prefixes
+    assert "proj-a/readme.txt" not in sizes
+
+
+async def test_tree_mode_depth_2(seeded_bucket_nested):
+    table = await get_top_level_sizes(
+        seeded_bucket_nested, min_size_gb=MIN_SIZE_INCLUDE_ALL, depth=2, **S3_KWARGS
+    )
+    assert set(table.schema.names) == {
+        "prefix",
+        "size_bytes",
+        "size_formatted",
+        "depth",
+    }
+
+    size_map = dict(zip(table["prefix"].to_pylist(), table["size_bytes"].to_pylist()))
+    assert size_map["proj-a"] == PROJ_A_SIZE
+    assert size_map["proj-a/model-1"] == PROJ_A_MODEL_1_SIZE
+    assert size_map["proj-b/data-v1"] == PROJ_B_DATA_V1_SIZE
+    assert "proj-b/data-v1/sub" not in size_map
+
+    # parents precede children; top level sorted by size desc
+    prefixes = table["prefix"].to_pylist()
+    assert prefixes[0] == "proj-b"
+    assert prefixes.index("proj-b") < prefixes.index("proj-b/data-v1")
+    assert prefixes.index("proj-a") < prefixes.index("proj-a/model-1")
+
+
+async def test_tree_mode_depth_3(seeded_bucket_nested):
+    table = await get_top_level_sizes(
+        seeded_bucket_nested, min_size_gb=MIN_SIZE_INCLUDE_ALL, depth=3, **S3_KWARGS
+    )
+    size_map = dict(zip(table["prefix"].to_pylist(), table["size_bytes"].to_pylist()))
+    assert size_map["proj-b/data-v1/sub"] == PROJ_B_DATA_V1_SUB_SIZE
+
+
+async def test_tree_mode_threshold_prunes_children(seeded_bucket_nested):
+    # threshold between 500 and 2000 bytes: prunes model-2 and data-v2,
+    # keeps parents (their totals still include pruned children)
+    threshold_gb = 600 / 1024**3
+    table = await get_top_level_sizes(
+        seeded_bucket_nested, min_size_gb=threshold_gb, depth=2, **S3_KWARGS
+    )
+    size_map = dict(zip(table["prefix"].to_pylist(), table["size_bytes"].to_pylist()))
+    assert "proj-a/model-2" not in size_map
+    assert "proj-b/data-v2" not in size_map
+    assert size_map["proj-a"] == PROJ_A_SIZE
+    assert size_map["proj-b"] == PROJ_B_SIZE
+
+
+async def test_depth_1_schema_unchanged(seeded_bucket_nested):
+    table = await get_top_level_sizes(
+        seeded_bucket_nested, min_size_gb=MIN_SIZE_INCLUDE_ALL, depth=1, **S3_KWARGS
+    )
+    assert set(table.schema.names) == {"prefix", "size_bytes", "size_formatted"}
+    size_map = dict(zip(table["prefix"].to_pylist(), table["size_bytes"].to_pylist()))
+    assert size_map == {"proj-a": PROJ_A_SIZE, "proj-b": PROJ_B_SIZE}
 
 
 async def test_continue_on_error_skips_failures(seeded_bucket, monkeypatch):

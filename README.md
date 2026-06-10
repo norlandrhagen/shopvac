@@ -1,6 +1,6 @@
 ## shopvac
 
-Get top-level prefix sizes from cloud storage buckets (S3 / GCS) for cleanups and data audits.
+Get prefix sizes from cloud storage buckets (S3 / GCS) for cleanups and data audits. Supports flat (top-level only) and tree modes that descend N prefix levels.
 
 ### Install
 
@@ -40,13 +40,20 @@ shopvac --bucket-url s3://my-bucket --send-slack --slack-webhook-url "https://ho
 shopvac --bucket-url s3://my-bucket --rich-table
 ```
 
+**Tree mode** (descend 3 prefix levels, show subtrees ≥ 1 GB):
+
+```bash
+shopvac --bucket-url s3://my-bucket --depth 3 --min-size-gb 1 --rich-table
+```
+
 ### Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-b`, `--bucket-url` | — | Bucket URL(s), repeatable |
 | `-B`, `--bucket-file` | — | File with one bucket URL per line |
-| `--min-size-gb` | 10.0 | Exclude prefixes smaller than this |
+| `-d`, `--depth` | 1 | Prefix levels to descend; 1 = flat, >1 = tree |
+| `--min-size-gb` | 10.0 | Exclude prefixes smaller than this (applies at every depth) |
 | `--rich-table` | off | Display as rich table instead of plain text |
 | `--send-slack` | off | Post results to Slack |
 | `--slack-webhook-url` | — | Slack incoming webhook URL |
