@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "arro3-core>=0.6.3",
+    "boto3>=1.38.0",
     "click>=8.2.1",
     "humanize>=4.13.0",
     "obstore>=0.9.2",

@@ -39,13 +39,19 @@ async def get_prefix_size(
     except Exception as e:
         if progress is not None:
             progress.update(
-                task_id, description=f"Failed {prefix.rstrip('/')}: {type(e).__name__}"
+                task_id,
+                completed=1,
+                total=1,
+                description=f"[red]✗ Failed {prefix.rstrip('/')}: {type(e).__name__}[/red]",
             )
         raise
 
     if progress is not None:
         progress.update(
-            task_id, description=f"Done {prefix.rstrip('/')}: {naturalsize(total_size)}"
+            task_id,
+            completed=1,
+            total=1,
+            description=f"[green]✓ Done {prefix.rstrip('/')}[/green]: {naturalsize(total_size)}",
         )
 
     return prefix, total_size
@@ -68,7 +74,7 @@ async def get_top_level_sizes(
 
     if show_progress:
         with Progress(
-            SpinnerColumn(),
+            SpinnerColumn(finished_text=" "),
             TextColumn("[progress.description]{task.description}"),
             TimeElapsedColumn(),
             console=Console(),

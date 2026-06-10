@@ -68,8 +68,15 @@ def add_options(options):
     "-b",
     "bucket_urls",
     multiple=True,
-    required=True,
     help="Cloud bucket URL(s) to analyze. Can be specified multiple times.",
+)
+@click.option(
+    "--bucket-file",
+    "-B",
+    "bucket_file",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a file with one bucket URL per line.",
 )
 @click.option(
     "--min-size-gb",
@@ -113,6 +120,7 @@ def add_options(options):
 @add_options(PROVIDER_OPTIONS)
 def cli(
     bucket_urls: Tuple[str, ...],
+    bucket_file: Optional[str],
     min_size_gb: float,
     send_slack: bool,
     slack_webhook_url: Optional[str],
@@ -129,10 +137,24 @@ def cli(
     gcp_service_account_path: Optional[str],
     gcp_project_id: Optional[str],
 ):
-    bucket_urls = [url for url in bucket_urls if url and url.strip()]
+    all_urls = list(bucket_urls)
+
+    if bucket_file:
+        from pathlib import Path
+
+        file_urls = [
+            line.strip()
+            for line in Path(bucket_file).read_text().splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        all_urls.extend(file_urls)
+
+    bucket_urls = [url for url in all_urls if url and url.strip()]
 
     if not bucket_urls:
-        raise click.BadParameter("At least one valid bucket URL must be provided")
+        raise click.BadParameter(
+            "At least one valid bucket URL must be provided via -b or --bucket-file"
+        )
 
     provider_options = {
         "aws_region": aws_region,
@@ -145,7 +167,9 @@ def cli(
         "gcp_project_id": gcp_project_id,
     }
 
-    provider_options = {k: v for k, v in provider_options.items() if v is not None}
+    provider_options = {
+        k: v for k, v in provider_options.items() if v is not None and v is not False
+    }
 
     asyncio.run(
         main(
@@ -304,7 +328,15 @@ async def main(
                 print(f"   - {bucket_url}")
         print(f"{'=' * 70}\n")
 
-        for bucket_url, table in bucket_tables.items():
+        non_empty_tables = {
+            url: t for url, t in bucket_tables.items() if t.num_rows > 0
+        }
+        empty_count = len(bucket_tables) - len(non_empty_tables)
+
+        if empty_count:
+            print(f"No prefixes >= {min_size_gb} GB: {empty_count} buckets\n")
+
+        for bucket_url, table in non_empty_tables.items():
             print(f"\n{'=' * 70}")
             print(f"Results for: {bucket_url}")
             print(f"{'=' * 70}")
@@ -316,7 +348,7 @@ async def main(
                     "Slack webhook url must be provided if send_slack is True"
                 )
 
-            for bucket_url, table in bucket_tables.items():
+            for bucket_url, table in non_empty_tables.items():
                 send_to_slack(
                     slack_webhook_url,
                     table,
