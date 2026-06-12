@@ -73,7 +73,7 @@ async def get_prefix_size(
                 if progress is not None:
                     progress.update(
                         task_id,
-                        description=f"Scanning {prefix.rstrip('/')}: {naturalsize(total_size)}",
+                        description=f"Scanning {prefix.rstrip('/')}: {naturalsize(total_size, binary=True)}",
                     )
         if max_depth == 1:
             sizes[prefix.rstrip("/")] = total_size
@@ -98,7 +98,7 @@ async def get_prefix_size(
             task_id,
             completed=1,
             total=1,
-            description=f"[green]✓ Done {prefix.rstrip('/')}[/green]: {naturalsize(total_size)}",
+            description=f"[green]✓ Done {prefix.rstrip('/')}[/green]: {naturalsize(total_size, binary=True)}",
         )
 
     return prefix, total_size, sizes
@@ -163,7 +163,9 @@ async def get_top_level_sizes(
             {
                 "prefix": [prefix for prefix, _ in filtered_data],
                 "size_bytes": [size for _, size in filtered_data],
-                "size_formatted": [naturalsize(size) for _, size in filtered_data],
+                "size_formatted": [
+                    naturalsize(size, binary=True) for _, size in filtered_data
+                ],
             }
         )
 
@@ -185,7 +187,7 @@ async def get_top_level_sizes(
         {
             "prefix": [p for p, _, _ in ordered],
             "size_bytes": [s for _, s, _ in ordered],
-            "size_formatted": [naturalsize(s) for _, s, _ in ordered],
+            "size_formatted": [naturalsize(s, binary=True) for _, s, _ in ordered],
             "depth": [d for _, _, d in ordered],
         }
     )
