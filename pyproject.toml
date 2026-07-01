@@ -12,13 +12,6 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
-
-
-[build-system]
-requires = ["uv_build>=0.8.18,<0.9.0"]
-build-backend = "uv_build"
-
-
 dependencies = [
     "arro3-core>=0.6.3",
     "boto3>=1.38.0",
@@ -30,6 +23,10 @@ dependencies = [
     "rich>=14.1.0",
     "tabulate>=0.9.0",
 ]
+
+[build-system]
+requires = ["uv_build>=0.8.18,<0.9.0"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
