@@ -1,11 +1,11 @@
 [project]
 name = "shopvac"
 version = "0.1.0"
-description = "Get the size of your cloud buckets"
+description = "CLI to get the size of your cloud buckets"
 readme = "README.md"
 license = "MIT"
 authors = [
-    { name = "Norland Rhagen", email = "norlandrhagen@gmail.com" },
+    { name = "Raphael Hagen", email = "norlandrhagen@gmail.com" },
 ]
 requires-python = ">=3.12"
 classifiers = [
