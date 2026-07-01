@@ -5,7 +5,13 @@ Get prefix sizes from cloud storage buckets (S3 / GCS) for cleanups and data aud
 ### Install
 
 ```bash
-uv tool install git+https://github.com/carbonplan/shopvac
+uv tool install shopvac
+```
+
+Or run once without installing:
+
+```bash
+uvx shopvac --bucket-url s3://my-bucket --min-size-gb 5
 ```
 
 ### Usage
@@ -13,37 +19,37 @@ uv tool install git+https://github.com/carbonplan/shopvac
 **Single bucket:**
 
 ```bash
-shopvac --bucket-url s3://my-bucket --min-size-gb 5
+uvx shopvac --bucket-url s3://my-bucket --min-size-gb 5
 ```
 
 **Multiple buckets from a file** (one URL per line, `#` lines ignored):
 
 ```bash
-shopvac --bucket-file buckets.txt --min-size-gb 1
+uvx shopvac --bucket-file buckets.txt --min-size-gb 1
 ```
 
 **GCS bucket:**
 
 ```bash
-shopvac --bucket-url gs://my-gcs-bucket --min-size-gb 1
+uvx shopvac --bucket-url gs://my-gcs-bucket --min-size-gb 1
 ```
 
 **Send results to Slack:**
 
 ```bash
-shopvac --bucket-url s3://my-bucket --send-slack --slack-webhook-url "https://hooks.slack.com/..."
+uvx shopvac --bucket-url s3://my-bucket --send-slack --slack-webhook-url "https://hooks.slack.com/..."
 ```
 
 **Rich table output:**
 
 ```bash
-shopvac --bucket-url s3://my-bucket --rich-table
+uvx shopvac --bucket-url s3://my-bucket --rich-table
 ```
 
 **Tree mode** (descend 3 prefix levels, show subtrees ≥ 1 GB):
 
 ```bash
-shopvac --bucket-url s3://my-bucket --depth 3 --min-size-gb 1 --rich-table
+uvx shopvac --bucket-url s3://my-bucket --depth 3 --min-size-gb 1 --rich-table
 ```
 
 ### Options
