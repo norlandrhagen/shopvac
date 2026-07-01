@@ -1,3 +1,4 @@
+import json
 import pyarrow as pa
 import requests
 from tabulate import tabulate
@@ -8,41 +9,52 @@ def _is_tree(table: pa.Table) -> bool:
     return "depth" in table.schema.names
 
 
-def _tree_lines(table: pa.Table) -> List[List[str]]:
-    """Flatten hierarchical table into (label, size) lines with tree connectors.
+def _tree_lines(table: pa.Table) -> List:
+    """Flatten hierarchical table into (label, size, skipped) lines with tree connectors.
 
     Rows must be ordered depth-first with parents before children
-    (as produced by size._order_hierarchy).
+    (as produced by size._order_hierarchy). None sentinels separate root groups.
     """
+    has_skipped = "skipped" in table.schema.names
     children: dict = {}
     roots = []
     for i in range(table.num_rows):
         prefix = table["prefix"][i].as_py()
         size_formatted = table["size_formatted"][i].as_py()
         depth = table["depth"][i].as_py()
+        skipped = has_skipped and table["skipped"][i].as_py()
         if depth == 1:
-            roots.append((prefix, size_formatted))
+            roots.append((prefix, size_formatted, skipped))
         else:
             children.setdefault(prefix.rsplit("/", 1)[0], []).append(
-                (prefix, size_formatted)
+                (prefix, size_formatted, skipped)
             )
 
-    lines: List[List[str]] = []
+    lines: List = []
 
-    def visit(prefix: str, size_formatted: str, ancestors_last: list) -> None:
+    def visit(
+        prefix: str, size_formatted: str, skipped: bool, ancestors_last: list
+    ) -> None:
         if ancestors_last:
             indent = "".join("    " if last else "│   " for last in ancestors_last[:-1])
             indent += "└── " if ancestors_last[-1] else "├── "
             label = indent + prefix.rsplit("/", 1)[1]
         else:
             label = prefix
-        lines.append([label, size_formatted])
+        lines.append([label, size_formatted, skipped])
         kids = children.get(prefix, [])
-        for i, (child_prefix, child_size) in enumerate(kids):
-            visit(child_prefix, child_size, ancestors_last + [i == len(kids) - 1])
+        for i, (child_prefix, child_size, child_skipped) in enumerate(kids):
+            visit(
+                child_prefix,
+                child_size,
+                child_skipped,
+                ancestors_last + [i == len(kids) - 1],
+            )
 
-    for prefix, size_formatted in roots:
-        visit(prefix, size_formatted, [])
+    for idx, (prefix, size_formatted, skipped) in enumerate(roots):
+        if idx > 0:
+            lines.append(None)
+        visit(prefix, size_formatted, skipped, [])
     return lines
 
 
@@ -68,14 +80,22 @@ def print_table(table: pa.Table) -> None:
     """Pretty-print table to stdout."""
     print(f"\n{'Prefix':<50} {'Size':<15}")
     print("-" * 65)
+    has_skipped = "skipped" in table.schema.names
     if _is_tree(table):
-        for label, size_formatted in _tree_lines(table):
-            print(f"{label:<50} {size_formatted:<15}")
+        for row in _tree_lines(table):
+            if row is None:
+                print()
+            else:
+                label, size_formatted, skipped = row
+                marker = " (~)" if skipped else ""
+                print(f"{label:<50} {size_formatted:<15}{marker}")
         return
     for i in range(table.num_rows):
         prefix = table["prefix"][i].as_py()
         size_formatted = table["size_formatted"][i].as_py()
-        print(f"{prefix:<50} {size_formatted:<15}")
+        skipped = has_skipped and table["skipped"][i].as_py()
+        marker = " (~)" if skipped else ""
+        print(f"{prefix:<50} {size_formatted:<15}{marker}")
 
 
 def print_rich_table(table: pa.Table, title: str) -> None:
@@ -89,11 +109,12 @@ def print_rich_table(table: pa.Table, title: str) -> None:
     rich_table.add_column("Prefix", style="cyan", no_wrap=True)
     rich_table.add_column("Size", style="magenta")
 
+    has_skipped = "skipped" in table.schema.names
     for i in range(table.num_rows):
         prefix = table["prefix"][i].as_py().rstrip("/")
         size_formatted = table["size_formatted"][i].as_py()
-
-        rich_table.add_row(prefix, size_formatted)
+        skipped = has_skipped and table["skipped"][i].as_py()
+        rich_table.add_row(prefix, size_formatted, style="yellow" if skipped else "")
 
     console.print("\n")
     console.print(rich_table)
@@ -109,19 +130,44 @@ def print_rich_tree(table: pa.Table, title: str) -> None:
 
     root = Tree(f"[bold]{title}[/bold]")
     nodes: dict = {}
+    has_skipped = "skipped" in table.schema.names
     for i in range(table.num_rows):
         prefix = table["prefix"][i].as_py()
         size_formatted = table["size_formatted"][i].as_py()
         depth = table["depth"][i].as_py()
+        skipped = has_skipped and table["skipped"][i].as_py()
+        color = "yellow" if skipped else "cyan"
         name = prefix if depth == 1 else prefix.rsplit("/", 1)[1]
         parent = root if depth == 1 else nodes[prefix.rsplit("/", 1)[0]]
-        nodes[prefix] = parent.add(
-            f"[cyan]{name}[/cyan] [magenta]{size_formatted}[/magenta]"
-        )
+        if depth == 1:
+            label = f"[bold {color}]{name}[/bold {color}] [bold magenta]{size_formatted}[/bold magenta]"
+        else:
+            label = f"[{color}]{name}[/{color}] [magenta]{size_formatted}[/magenta]"
+        nodes[prefix] = parent.add(label)
 
     console.print("\n")
     console.print(root)
     console.print("\n")
+
+
+def _get_skipped_paths(table: pa.Table) -> list:
+    metadata = table.schema.metadata or {}
+    return json.loads(metadata.get(b"skipped_paths", b"[]"))
+
+
+def _print_skipped_paths_warning(paths: list, use_rich: bool) -> None:
+    if use_rich:
+        from rich.console import Console
+
+        console = Console()
+        console.print("[yellow bold]Skipped objects (invalid paths):[/yellow bold]")
+        for p in paths:
+            console.print(f"  [yellow]{p}[/yellow]")
+        console.print("")
+    else:
+        print("\nSkipped objects (invalid paths):")
+        for p in paths:
+            print(f"  {p}")
 
 
 def display_results(
@@ -135,6 +181,9 @@ def display_results(
             print_rich_table(table, f"Bucket Analysis: {bucket_url}")
     else:
         print_table(table)
+    paths = _get_skipped_paths(table)
+    if paths:
+        _print_skipped_paths_warning(paths, use_rich=use_rich_table)
 
 
 def send_to_slack(

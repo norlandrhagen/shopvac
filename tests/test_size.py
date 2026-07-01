@@ -30,7 +30,13 @@ async def test_top_level_sizes_returns_table(seeded_bucket):
         seeded_bucket, min_size_gb=MIN_SIZE_INCLUDE_ALL, **S3_KWARGS
     )
     assert isinstance(table, pa.Table)
-    assert set(table.schema.names) == {"prefix", "size_bytes", "size_formatted"}
+    assert set(table.schema.names) == {
+        "prefix",
+        "size_bytes",
+        "size_formatted",
+        "skipped",
+    }
+    assert table["skipped"].to_pylist() == [False] * table.num_rows
 
 
 async def test_top_level_sizes_correct_counts(seeded_bucket):
@@ -80,10 +86,14 @@ async def test_get_prefix_size(seeded_bucket, moto_server):
         endpoint=MOTO_ENDPOINT,
         client_options={"allow_http": True},
     )
-    prefix, size, sizes = await get_prefix_size(store, "prefix-a/")
+    prefix, size, sizes, skipped, invalid_paths = await get_prefix_size(
+        store, "prefix-a/"
+    )
     assert prefix == "prefix-a/"
     assert size == PREFIX_A_SIZE
     assert sizes == {"prefix-a": PREFIX_A_SIZE}
+    assert skipped == 0
+    assert invalid_paths == []
 
 
 async def test_get_prefix_size_with_depth(seeded_bucket_nested, moto_server):
@@ -97,7 +107,9 @@ async def test_get_prefix_size_with_depth(seeded_bucket_nested, moto_server):
         endpoint=MOTO_ENDPOINT,
         client_options={"allow_http": True},
     )
-    prefix, total, sizes = await get_prefix_size(store, "proj-a/", max_depth=2)
+    prefix, total, sizes, skipped, invalid_paths = await get_prefix_size(
+        store, "proj-a/", max_depth=2
+    )
     assert total == PROJ_A_SIZE
     assert sizes["proj-a"] == PROJ_A_SIZE
     assert sizes["proj-a/model-1"] == PROJ_A_MODEL_1_SIZE
@@ -115,6 +127,7 @@ async def test_tree_mode_depth_2(seeded_bucket_nested):
         "size_bytes",
         "size_formatted",
         "depth",
+        "skipped",
     }
 
     size_map = dict(zip(table["prefix"].to_pylist(), table["size_bytes"].to_pylist()))
@@ -156,7 +169,12 @@ async def test_depth_1_schema_unchanged(seeded_bucket_nested):
     table = await get_top_level_sizes(
         seeded_bucket_nested, min_size_gb=MIN_SIZE_INCLUDE_ALL, depth=1, **S3_KWARGS
     )
-    assert set(table.schema.names) == {"prefix", "size_bytes", "size_formatted"}
+    assert set(table.schema.names) == {
+        "prefix",
+        "size_bytes",
+        "size_formatted",
+        "skipped",
+    }
     size_map = dict(zip(table["prefix"].to_pylist(), table["size_bytes"].to_pylist()))
     assert size_map == {"proj-a": PROJ_A_SIZE, "proj-b": PROJ_B_SIZE}
 

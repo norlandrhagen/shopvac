@@ -3,7 +3,15 @@ name = "shopvac"
 version = "0.1.0"
 description = "Get the size of your cloud buckets"
 readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Norland Rhagen", email = "norlandrhagen@gmail.com" },
+]
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "arro3-core>=0.6.3",
     "boto3>=1.38.0",

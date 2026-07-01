@@ -13,3 +13,8 @@ wheels/
 *uv.lock
 
 *.ruff_cache
+
+# local bucket lists (may contain internal names)
+buckets.txt
+
+.github/workflows/s3-bucket-size-report.yaml
